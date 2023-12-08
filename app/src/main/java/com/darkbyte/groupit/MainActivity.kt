@@ -18,9 +18,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,7 +31,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
+import com.darkbyte.groupit.facedetection.Utils.initiateDetection
+import com.darkbyte.groupit.facedetection.Utils.initiateTFLite
 import com.darkbyte.groupit.ui.theme.GroupItTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,10 +47,20 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                    val context = LocalContext.current
+                    val scope = rememberCoroutineScope()
+                    LaunchedEffect(key1 = Unit) {
+                        initiateTFLite(context, assets)
+                    }
                     var photoUri: Uri? by remember { mutableStateOf(null) }
                     val launcher =
                         rememberLauncherForActivityResult(contract = ActivityResultContracts.PickVisualMedia()) {
                             photoUri = it
+                            if (it != null) {
+                                scope.launch(Dispatchers.IO) {
+                                    initiateDetection(context, it)
+                                }
+                            }
                         }
                     Column(
                         modifier = Modifier
@@ -56,7 +72,7 @@ class MainActivity : ComponentActivity() {
                             //Use Coil to display the selected image
                             val painter = rememberAsyncImagePainter(
                                 ImageRequest
-                                    .Builder(LocalContext.current)
+                                    .Builder(context)
                                     .data(data = photoUri)
                                     .build()
                             )
@@ -84,6 +100,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
