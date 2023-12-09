@@ -49,9 +49,6 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val context = LocalContext.current
                     val scope = rememberCoroutineScope()
-                    LaunchedEffect(key1 = Unit) {
-                        initiateTFLite(context, assets)
-                    }
                     var photoUri: Uri? by remember { mutableStateOf(null) }
                     val launcher =
                         rememberLauncherForActivityResult(contract = ActivityResultContracts.PickVisualMedia()) {

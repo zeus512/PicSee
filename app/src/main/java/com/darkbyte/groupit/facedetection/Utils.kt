@@ -206,7 +206,7 @@ object Utils {
                 val resultsAux = detector!!.recognizeImage(croppedFaceBitmap, add)
                 lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime
                 if (resultsAux!!.isNotEmpty()) {
-                    val result = resultsAux!![0]
+                    val result = resultsAux[0]
                     extra = result.extra
                     //          Object extra = result.getExtra();
 //          if (extra != null) {
@@ -214,13 +214,13 @@ object Utils {
 //          }
                     val conf: Float = result.distance ?: 0f
                     if (conf < 1.0f) {
+                        label = result.title ?: "photo$counter"
                         if (detector?.registeredList(result.title.orEmpty()) != null) {
                             Logger().d("i'm working name - ${result.title}")
                         } else {
                             counter + 1
                         }
                         confidence = conf
-                        label = result.title ?: "dummy"
                         color = if (result.id.equals("0")) {
                             Color.GREEN
                         } else {

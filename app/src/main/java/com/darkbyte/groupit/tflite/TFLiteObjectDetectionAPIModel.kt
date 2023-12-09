@@ -82,7 +82,7 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
         // Preprocess the image data from 0-255 int to normalized float based
         // on the provided parameters.
         if (bitmap == null) return null
-        val pixels = IntArray(inputSize * inputSize)
+        val pixels = IntArray(bitmap.width * bitmap.height)
         imgData.rewind()
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
 
