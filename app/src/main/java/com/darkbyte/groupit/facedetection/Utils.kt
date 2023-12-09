@@ -100,7 +100,6 @@ object Utils {
 
     private fun onFacesDetected(
         faces: List<Face>,
-        add: Boolean,
         onFaceCropped: (Bitmap, Rect) -> Unit
     ) {
         val paint = Paint()
@@ -114,6 +113,7 @@ object Utils {
                 MINIMUM_CONFIDENCE_TF_OD_API
         }
         val mappedRecognitions: MutableList<Recognition> = LinkedList()
+        val mutableBitmap = bitmap?.copy(Bitmap.Config.ARGB_8888, true)
 
 
         for (face in faces) {
@@ -133,16 +133,19 @@ object Utils {
                 var extra: Any? = null
                 val startTime = SystemClock.uptimeMillis()
                 val bounds = face.boundingBox
-                val mutableBitmap = bitmap?.copy(Bitmap.Config.ARGB_8888, true)
 
                 val croppedFaceBitmap = Bitmap.createBitmap(
                     mutableBitmap!!,
                     bounds.left,
                     bounds.top,
-                    bounds.width(),
-                    bounds.height()
+                    if (bounds.left + bounds.width() <= bounds.width()) {
+                        bounds.width()
+                    } else {
+                        mutableBitmap.width - bounds.left
+                    },
+                    minOf(bounds.height(), mutableBitmap.height)
                 )
-                val resultsAux = detector!!.recognizeImage(croppedFaceBitmap, add)
+                val resultsAux = detector!!.recognizeImage(croppedFaceBitmap, true)
                 lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime
                 if (resultsAux!!.isNotEmpty()) {
                     val result = resultsAux[0]
@@ -197,10 +200,10 @@ object Utils {
 
         Logger.d("Initializing at size $previewHeight x $previewWidth")
         bitmap = if (Build.VERSION.SDK_INT < 28) {
-            MediaStore.Images.Media.getBitmap(contentResolver, uri);
+            MediaStore.Images.Media.getBitmap(contentResolver, uri)
         } else {
-            val source = ImageDecoder.createSource(contentResolver, uri);
-            ImageDecoder.decodeBitmap(source);
+            val source = ImageDecoder.createSource(contentResolver, uri)
+            ImageDecoder.decodeBitmap(source)
         }
 
     }
@@ -220,7 +223,7 @@ object Utils {
         image?.let {
             processImage(it) { faces ->
                 GlobalScope.launch(Dispatchers.IO) {
-                    onFacesDetected(faces, true, onFaceCropped)
+                    onFacesDetected(faces, onFaceCropped)
                 }
             }
         }
