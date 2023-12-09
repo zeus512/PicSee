@@ -16,9 +16,9 @@ import android.os.Build
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.widget.Toast
-import com.darkbyte.groupit.Logger
+import com.darkbyte.groupit.logger.Logger
+import com.darkbyte.groupit.tflite.Recognition
 import com.darkbyte.groupit.tflite.SimilarityClassifier
-import com.darkbyte.groupit.tflite.SimilarityClassifier.Recognition
 import com.darkbyte.groupit.tflite.TFLiteObjectDetectionAPIModel
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -63,7 +63,7 @@ object Utils {
             )
         } catch (e: IOException) {
             e.printStackTrace()
-            Logger().e(e, "Exception initializing classifier!")
+            Logger.e("Exception initializing classifier!")
             val toast = Toast.makeText(
                 context, "Classifier could not be initialized", Toast.LENGTH_SHORT
             )
@@ -117,7 +117,7 @@ object Utils {
 
 
         for (face in faces) {
-            Logger().i("FACE$face")
+            Logger.i("FACE$face")
             //results = detector.recognizeImage(croppedBitmap);
             val boundingBox = RectF(face.boundingBox)
 
@@ -149,13 +149,13 @@ object Utils {
                     extra = result.extra
                     //          Object extra = result.getExtra();
 //          if (extra != null) {
-//            Logger().i("embeeding retrieved " + extra.toString());
+//            Logger.i("embeeding retrieved " + extra.toString());
 //          }
                     val conf: Float = result.distance ?: 0f
                     if (conf < 1.0f) {
                         label = result.title ?: "photo$counter"
                         if (detector?.registeredList(result.title.orEmpty()) != null) {
-                            Logger().d("i'm working name - ${result.title}")
+                            Logger.d("i'm working name - ${result.title}")
                         } else {
                             counter + 1
                         }
@@ -171,12 +171,12 @@ object Utils {
                 onFaceCropped(mutableBitmap, bounds)
 
                 val result = Recognition(
-                    "0", label, confidence, boundingBox
+                    id = "$counter",
+                    title = label,
+                    distance = confidence,
+                    location = boundingBox,
+                    extra = extra
                 )
-                //result.setColor(color)
-                result.setLocation(boundingBox)
-                result.extra = extra
-                //result.setCrop(crop)
                 mappedRecognitions.add(result)
             }
         }
@@ -195,11 +195,7 @@ object Utils {
         val previewHeight = options.outHeight
         val previewWidth = options.outWidth
 
-        Logger().i(
-            "Initializing at size %dx%d",
-            previewWidth,
-            previewHeight
-        )
+        Logger.d("Initializing at size $previewHeight x $previewWidth")
         bitmap = if (Build.VERSION.SDK_INT < 28) {
             MediaStore.Images.Media.getBitmap(contentResolver, uri);
         } else {
@@ -257,7 +253,7 @@ object Utils {
         mappedRecognitions: List<Recognition>
     ) {
         if (mappedRecognitions.isNotEmpty()) {
-            Logger().i("Adding results")
+            Logger.i("Adding results")
             val rec: Recognition = mappedRecognitions[0]
             if (rec.extra != null) {
                 showAddFaceDialog(rec)
