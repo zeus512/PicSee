@@ -8,8 +8,8 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ImageDecoder
-import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
@@ -28,7 +28,6 @@ import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.face.FaceDetectorOptions.CLASSIFICATION_MODE_NONE
 import com.google.mlkit.vision.face.FaceDetectorOptions.LANDMARK_MODE_NONE
 import com.google.mlkit.vision.face.FaceDetectorOptions.PERFORMANCE_MODE_FAST
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -38,34 +37,11 @@ import java.util.LinkedList
 
 object Utils {
 
-    private var sensorOrientation: Int = 0
     private var detector: SimilarityClassifier? = null
     private var lastProcessingTimeMs: Long = 0
-    private var rgbFrameBitmap: Bitmap? = null
     private var bitmap: Bitmap? = null
-    private var croppedBitmap: Bitmap? = null
-    private var cropCopyBitmap: Bitmap? = null
-    private var computingDetection = false
 
-    var counter = 0
-
-    //private boolean adding = false;
-    private var timestamp: Long = 0
-    private var frameToCropTransform: Matrix? = null
-    private var cropToFrameTransform: Matrix? = null
-
-    //private Matrix cropToPortraitTransform;
-//    private var tracker: MultiBoxTracker? = null
-//    private var borderedText: BorderedText? = null
-
-
-    // here the preview image is drawn in portrait way
-    private var portraitBmp: Bitmap? = null
-
-    // here the face is cropped and drawn
-    private var faceBmp: Bitmap? = null
-
-    //private HashMap<String, Classifier.Recognition> knownFaces = new HashMap<>();
+    private var counter = 0
 
     private val faceDetectorOptions =
         FaceDetectorOptions.Builder().setPerformanceMode(PERFORMANCE_MODE_FAST)
@@ -76,7 +52,7 @@ object Utils {
         FaceDetection.getClient(faceDetectorOptions)
     }
 
-    suspend fun initiateTFLite(context: Context, assetManager: AssetManager) {
+    fun initiateTFLite(context: Context, assetManager: AssetManager) {
         try {
             detector = TFLiteObjectDetectionAPIModel().create(
                 assetManager,
@@ -85,20 +61,9 @@ object Utils {
                 TF_OD_API_INPUT_SIZE,
                 TF_OD_API_IS_QUANTIZED
             )
-            faceBmp = Bitmap.createBitmap(
-                TF_OD_API_INPUT_SIZE,
-                TF_OD_API_INPUT_SIZE,
-                Bitmap.Config.ARGB_8888
-            )
-
-
-            //cropSize = TF_OD_API_INPUT_SIZE;
         } catch (e: IOException) {
             e.printStackTrace()
-            Logger().e(
-                e,
-                "Exception initializing classifier!"
-            )
+            Logger().e(e, "Exception initializing classifier!")
             val toast = Toast.makeText(
                 context, "Classifier could not be initialized", Toast.LENGTH_SHORT
             )
@@ -106,15 +71,38 @@ object Utils {
         }
     }
 
-    suspend fun initiateDetection(context: Context, uri: Uri) {
-        getIMGSize(uri, context)
-
-        fetchImageFromMediaUri(context, uri)
+    fun initiateDetection(
+        context: Context,
+        uri: Uri,
+        onFaceCropped: (Bitmap, Rect) -> Unit
+    ) {
+        buildBitmapFromUri(uri, context)
+        fetchImageFromMediaUri(context, uri, onFaceCropped)
     }
 
-    private fun onFacesDetected(faces: List<Face>, add: Boolean) {
-        cropCopyBitmap = Bitmap.createBitmap(croppedBitmap!!)
-        val canvas = Canvas(cropCopyBitmap!!)
+    private fun drawRectOnBitmap(bitmap: Bitmap, rect: Rect, drawColor: Int) {
+        val canvas = Canvas(bitmap)
+        val paint = Paint().apply {
+            color = drawColor
+            style = Paint.Style.STROKE
+            strokeWidth = 5f
+        }
+
+        // Draw a rectangle on the canvas
+        canvas.drawRect(
+            rect.left.toFloat(),
+            rect.top.toFloat(),
+            rect.right.toFloat(),
+            rect.bottom.toFloat(),
+            paint
+        )
+    }
+
+    private fun onFacesDetected(
+        faces: List<Face>,
+        add: Boolean,
+        onFaceCropped: (Bitmap, Rect) -> Unit
+    ) {
         val paint = Paint()
         paint.setColor(Color.RED)
         paint.style = Paint.Style.STROKE
@@ -128,26 +116,6 @@ object Utils {
         val mappedRecognitions: MutableList<Recognition> = LinkedList()
 
 
-        //final List<Classifier.Recognition> results = new ArrayList<>();
-
-        // Note this can be done only once
-        val sourceW = rgbFrameBitmap!!.getWidth()
-        val sourceH = rgbFrameBitmap!!.getHeight()
-        val targetW = portraitBmp!!.getWidth()
-        val targetH = portraitBmp!!.getHeight()
-        val transform = createTransform(
-            sourceW,
-            sourceH,
-            targetW,
-            targetH,
-            sensorOrientation
-        )
-        val cv = Canvas(portraitBmp!!)
-
-        // draws the original image in portrait mode.
-        cv.drawBitmap(rgbFrameBitmap!!, transform, null)
-        val cvFace = Canvas(faceBmp!!)
-        val saved = false
         for (face in faces) {
             Logger().i("FACE$face")
             //results = detector.recognizeImage(croppedBitmap);
@@ -155,41 +123,14 @@ object Utils {
 
             //final boolean goodConfidence = result.getConfidence() >= minimumConfidence;
             val goodConfidence = true //face.get;
-            if (boundingBox != null && goodConfidence) {
+            if (goodConfidence) {
 
-                // maps crop coordinates to original
-                //cropToFrameTransform!!.mapRect(boundingBox)
-
-                // maps original coordinates to portrait coordinates
-                val faceBB = RectF(boundingBox)
-                transform.mapRect(faceBB)
-
-                // translates portrait to origin and scales to fit input inference size
-                //cv.drawRect(faceBB, paint);
-                val sx: Float =
-                    TF_OD_API_INPUT_SIZE.toFloat() / faceBB.width()
-                val sy: Float =
-                    TF_OD_API_INPUT_SIZE.toFloat() / faceBB.height()
-                val matrix = Matrix()
-                matrix.postTranslate(-faceBB.left, -faceBB.top)
-                matrix.postScale(sx, sy)
-                cvFace.drawBitmap(portraitBmp!!, matrix, null)
 
                 //canvas.drawRect(faceBB, paint);
                 var label = ""
                 var confidence = -1f
                 var color = Color.BLUE
                 var extra: Any? = null
-                var crop: Bitmap? = null
-                if (add) {
-                    crop = Bitmap.createBitmap(
-                        portraitBmp!!,
-                        faceBB.left.toInt(),
-                        faceBB.top.toInt(),
-                        faceBB.width().toInt(),
-                        faceBB.height().toInt()
-                    )
-                }
                 val startTime = SystemClock.uptimeMillis()
                 val bounds = face.boundingBox
                 val mutableBitmap = bitmap?.copy(Bitmap.Config.ARGB_8888, true)
@@ -201,8 +142,6 @@ object Utils {
                     bounds.width(),
                     bounds.height()
                 )
-
-
                 val resultsAux = detector!!.recognizeImage(croppedFaceBitmap, add)
                 lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime
                 if (resultsAux!!.isNotEmpty()) {
@@ -221,13 +160,15 @@ object Utils {
                             counter + 1
                         }
                         confidence = conf
-                        color = if (result.id.equals("0")) {
+                        color = if (detector?.registeredList(result.title.orEmpty()) != null) {
                             Color.GREEN
                         } else {
                             Color.RED
                         }
                     }
                 }
+                drawRectOnBitmap(mutableBitmap, bounds, color)
+                onFaceCropped(mutableBitmap, bounds)
 
                 val result = Recognition(
                     "0", label, confidence, boundingBox
@@ -239,15 +180,11 @@ object Utils {
                 mappedRecognitions.add(result)
             }
         }
-
-        //    if (saved) {
-//      lastSaved = System.currentTimeMillis();
-//    }
         updateResults(mappedRecognitions)
     }
 
 
-    private suspend fun getIMGSize(uri: Uri, context: Context) {
+    private fun buildBitmapFromUri(uri: Uri, context: Context) {
         val options = BitmapFactory.Options()
         options.inJustDecodeBounds = true
         val contentResolver: ContentResolver = context.contentResolver
@@ -263,67 +200,40 @@ object Utils {
             previewWidth,
             previewHeight
         )
-        val rgbBytes = IntArray(previewWidth * previewHeight)
-        rgbFrameBitmap =
-            Bitmap.createBitmap(previewWidth, previewHeight, Bitmap.Config.ARGB_8888)
         bitmap = if (Build.VERSION.SDK_INT < 28) {
             MediaStore.Images.Media.getBitmap(contentResolver, uri);
         } else {
             val source = ImageDecoder.createSource(contentResolver, uri);
             ImageDecoder.decodeBitmap(source);
         }
-        val cropW = (previewWidth / 2.0).toInt()
-        val cropH = (previewHeight / 2.0).toInt()
-
-        frameToCropTransform =
-            ImageUtils.getTransformationMatrix(
-                previewWidth,
-                previewHeight,
-                cropW,
-                cropH,
-                sensorOrientation,
-                MAINTAIN_ASPECT
-            )
-        croppedBitmap = Bitmap.createBitmap(cropW, cropH, Bitmap.Config.ARGB_8888)
-
-        portraitBmp = Bitmap.createBitmap(previewWidth, previewHeight, Bitmap.Config.ARGB_8888)
-        rgbFrameBitmap = bitmap
-        val canvas = Canvas(croppedBitmap!!)
-        canvas.drawBitmap(rgbFrameBitmap!!, frameToCropTransform!!, null)
 
     }
 
 
-    private suspend fun fetchImageFromMediaUri(
+    private fun fetchImageFromMediaUri(
         context: Context,
-        uri: Uri
+        uri: Uri,
+        onFaceCropped: (Bitmap, Rect) -> Unit
     ) {
-
         var image: InputImage? = null
         try {
             image = InputImage.fromFilePath(context, uri)
-
-            //image = InputImage.fromBitmap(croppedBitmap!!, 0)
         } catch (e: IOException) {
             e.printStackTrace()
         }
         image?.let {
             processImage(it) { faces ->
                 GlobalScope.launch(Dispatchers.IO) {
-                    onFacesDetected(faces, true)
+                    onFacesDetected(faces, true, onFaceCropped)
                 }
             }
         }
     }
 
-    fun fetchFaceDetector() = faceDetector
-
-    @OptIn(DelicateCoroutinesApi::class)
-    private suspend fun processImage(inputImage: InputImage, onSuccess: (List<Face>) -> Unit) {
-        val result = faceDetector.process(inputImage)
+    private fun processImage(inputImage: InputImage, onSuccess: (List<Face>) -> Unit) {
+        faceDetector.process(inputImage)
             .addOnSuccessListener { faces ->
-                if (faces.size == 0) {
-                }
+                if (faces.size == 0) return@addOnSuccessListener
                 onSuccess(faces)
             }
             .addOnFailureListener { e ->
@@ -339,60 +249,13 @@ object Utils {
         TF_OD_API
     }
 
-    suspend fun setUseNNAPI(isChecked: Boolean) {
-        detector?.setUseNNAPI(isChecked)
-    }
-
-    // Face Processing
-    private fun createTransform(
-        srcWidth: Int,
-        srcHeight: Int,
-        dstWidth: Int,
-        dstHeight: Int,
-        applyRotation: Int
-    ): Matrix {
-        val matrix = Matrix()
-        if (applyRotation != 0) {
-            if (applyRotation % 90 != 0) {
-                Logger().w("Rotation of %d % 90 != 0", applyRotation)
-            }
-
-            // Translate so center of image is at origin.
-            matrix.postTranslate(-srcWidth / 2.0f, -srcHeight / 2.0f)
-
-            // Rotate around origin.
-            matrix.postRotate(applyRotation.toFloat())
-        }
-
-//        // Account for the already applied rotation, if any, and then determine how
-//        // much scaling is needed for each axis.
-//        final boolean transpose = (Math.abs(applyRotation) + 90) % 180 == 0;
-//        final int inWidth = transpose ? srcHeight : srcWidth;
-//        final int inHeight = transpose ? srcWidth : srcHeight;
-        if (applyRotation != 0) {
-
-            // Translate back from origin centered reference to destination frame.
-            matrix.postTranslate(dstWidth / 2.0f, dstHeight / 2.0f)
-        }
-        return matrix
-    }
-
     private fun showAddFaceDialog(rec: Recognition) {
-
-//
-//            val name: String = etName.getText().toString()
-//            if (name.isEmpty()) {
-//                return
-//            }
         detector?.register(rec.title ?: "unknown", rec)
-        //knownFaces.put(name, rec);
     }
 
     private fun updateResults(
         mappedRecognitions: List<Recognition>
     ) {
-        //tracker.trackResults(mappedRecognitions, currTimestamp)
-        //adding = false;
         if (mappedRecognitions.isNotEmpty()) {
             Logger().i("Adding results")
             val rec: Recognition = mappedRecognitions[0]
@@ -424,10 +287,6 @@ object Utils {
 //private static final Size CROP_SIZE = new Size(320, 320);
     private const val SAVE_PREVIEW_BITMAP = false
     private const val TEXT_SIZE_DIP = 10f
-}
-
-private enum class DetectorMode {
-    TF_OD_API
 }
 
 
