@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "in.darkbyte.groupit"
+    namespace = "com.darkbyte.groupit"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "in.darkbyte.groupit"
+        applicationId = "com.darkbyte.groupit"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
@@ -54,11 +54,16 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.activity.ktx)
+    implementation(libs.coil.compose)
+    implementation(libs.mlkit.facedetection)
+    implementation(libs.tensorflow.lite)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.lifecycle.process)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
