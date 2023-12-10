@@ -1,5 +1,6 @@
 [versions]
 agp = "8.3.0-alpha16"
+exifinterface = "1.3.6"
 faceDetection = "16.1.5"
 kotlin = "1.9.0"
 coreKtx = "1.12.0"
@@ -15,6 +16,7 @@ lifecycleProcess = "2.6.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
 mlkit-facedetection = { module = "com.google.mlkit:face-detection", version.ref = "faceDetection" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

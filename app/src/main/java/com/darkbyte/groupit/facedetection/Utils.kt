@@ -80,6 +80,8 @@ object Utils {
         fetchImageFromMediaUri(context, uri, onFaceCropped)
     }
 
+    fun fetchDetector() = detector
+
     private fun drawRectOnBitmap(bitmap: Bitmap, rect: Rect, drawColor: Int) {
         val canvas = Canvas(bitmap)
         val paint = Paint().apply {
@@ -131,6 +133,7 @@ object Utils {
                 var confidence = -1f
                 var color = Color.BLUE
                 var extra: Any? = null
+                var croppedBitmap: Bitmap? = null
                 val startTime = SystemClock.uptimeMillis()
                 val bounds = face.boundingBox
 
@@ -145,11 +148,11 @@ object Utils {
                     },
                     minOf(bounds.height(), mutableBitmap.height)
                 )
-                val resultsAux = detector!!.recognizeImage(croppedFaceBitmap, true)
+                val result = detector!!.recognizeImage(croppedFaceBitmap, true)
                 lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime
-                if (resultsAux!!.isNotEmpty()) {
-                    val result = resultsAux[0]
+                if (result != null) {
                     extra = result.extra
+                    croppedBitmap = bitmap
                     //          Object extra = result.getExtra();
 //          if (extra != null) {
 //            Logger.i("embeeding retrieved " + extra.toString());
@@ -159,6 +162,7 @@ object Utils {
                         label = result.title ?: "photo$counter"
                         if (detector?.registeredList(result.title.orEmpty()) != null) {
                             Logger.d("i'm working name - ${result.title}")
+                            croppedBitmap = null
                         } else {
                             counter + 1
                         }
@@ -173,14 +177,15 @@ object Utils {
                 drawRectOnBitmap(mutableBitmap, bounds, color)
                 onFaceCropped(mutableBitmap, bounds)
 
-                val result = Recognition(
+                val recognition = Recognition(
                     id = "$counter",
                     title = label,
                     distance = confidence,
                     location = boundingBox,
-                    extra = extra
+                    extra = extra,
+                    bitmap = croppedBitmap
                 )
-                mappedRecognitions.add(result)
+                mappedRecognitions.add(recognition)
             }
         }
         updateResults(mappedRecognitions)

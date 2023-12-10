@@ -72,8 +72,8 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
 
     override fun recognizeImage(
         bitmap: Bitmap?,
-        getExtra: Boolean
-    ): List<Recognition>? {
+        getExtra: Boolean,
+    ): Recognition? {
 
         if (bitmap == null) return null
         val size = maxOf(bitmap.width * bitmap.height, inputSize * inputSize)
@@ -133,7 +133,7 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
             rec.extra = embeddings
         }
         Trace.endSection()
-        return recognitions
+        return rec
     }
 
 
@@ -142,6 +142,8 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
     }
 
     override fun registeredList(name: String) = registered[name]
+
+    override fun fetchRegisteredList(): List<Recognition> = registered.values.toList()
 
     // looks for the nearest embeeding in the dataset (using L2 norm)
     // and retrurns the pair <id, distance>
