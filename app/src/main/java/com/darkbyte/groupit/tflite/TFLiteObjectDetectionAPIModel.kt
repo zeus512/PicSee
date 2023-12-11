@@ -62,18 +62,20 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
     private lateinit var imgData: ByteBuffer
     private var tfLite: Interpreter? = null
 
-    // Face Mask Detector Output
+    // UserFace Mask Detector Output
     private val output: MutableList<MutableList<Float>> = mutableListOf()
 
-    private var registered: HashMap<String, Recognition> = HashMap()
-    override fun register(name: String, recognition: Recognition) {
-        registered.getOrPut(name) { recognition }
+    private var registered: HashMap<String, Faces> = HashMap()
+    override fun register(name: String, face: UserFace) {
+        val list: MutableList<UserFace> = mutableListOf()
+        list.addAll(registered[name]?.list.orEmpty())
+        list.add(face)
+        registered[name] = Faces(list)
     }
 
     override fun recognizeImage(
         bitmap: Bitmap?,
-        getExtra: Boolean,
-    ): Recognition? {
+    ): UserFace? {
 
         if (bitmap == null) return null
         val size = maxOf(bitmap.width * bitmap.height, inputSize * inputSize)
@@ -85,7 +87,6 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
         for (i in 0..<inputSize) {
             for (j in 0..<inputSize) {
                 val pixelValue = pixels[i * inputSize + j]
-                Logger.d("dummy $pixelValue")
                 if (isModelQuantized) {
                     // Quantized model
                     imgData.put((pixelValue shr 16 and 0xFF).toByte())
@@ -100,7 +101,7 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
         }
         val inputArray = arrayOf<Any?>(imgData)
 
-        // Here outputMap is changed to fit the Face Mask detector
+        // Here outputMap is changed to fit the UserFace Mask detector
         val outputMap: MutableMap<Int, Any> = HashMap()
         embeddings = Array(1) { FloatArray(OUTPUT_SIZE) }
         outputMap[0] = embeddings
@@ -121,17 +122,13 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
                 Logger.i("nearest: $name - distance: $distance")
             }
         }
-        val recognitions: MutableList<Recognition> = mutableListOf()
-        val rec = Recognition(
+        val rec = UserFace(
             id,
             label,
             distance,
-            RectF()
+            RectF(),
+            embeddings,
         )
-        recognitions.add(rec)
-        if (getExtra) {
-            rec.extra = embeddings
-        }
         Trace.endSection()
         return rec
     }
@@ -141,16 +138,32 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
         TODO("Not yet implemented")
     }
 
-    override fun registeredList(name: String) = registered[name]
+    override fun registeredList(name: String) =
+        registered[name]?.list?.firstOrNull { it.facesFoundAlong == 1 }
+            ?: registered[name]?.list?.firstOrNull()
 
-    override fun fetchRegisteredList(): List<Recognition> = registered.values.toList()
+    override fun fetchAllPhotosFromSingleFace(name: String) =
+        registered[name]?.list
+
+
+    override fun fetchRegisteredList(): List<UserFace> {
+        val list: MutableList<UserFace> = mutableListOf()
+        registered.values.forEach {
+            val userFace = it.list.firstOrNull { it.facesFoundAlong == 1 } ?: it.list.firstOrNull()
+            userFace?.let { face ->
+                list.add(face)
+            }
+        }
+        return list
+    }
 
     // looks for the nearest embeeding in the dataset (using L2 norm)
     // and retrurns the pair <id, distance>
     private fun findNearest(emb: FloatArray): Pair<String, Float>? {
         var ret: Pair<String, Float>? = null
-        for ((name, value) in registered) {
-            val knownEmb = (value.extra as? Array<FloatArray>)?.getOrNull(0) ?: floatArrayOf()
+        for ((name, faces) in registered) {
+            val face = faces.list.firstOrNull() ?: return null
+            val knownEmb = (face.extra as? Array<FloatArray>)?.getOrNull(0) ?: floatArrayOf()
             var distance = 0f
             for (i in emb.indices) {
                 if (i !in knownEmb.indices) continue

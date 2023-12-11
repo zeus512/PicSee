@@ -11,15 +11,16 @@ import android.graphics.ImageDecoder
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.media.MediaCodec.MetricsConstants.MODE
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.widget.Toast
 import com.darkbyte.groupit.logger.Logger
-import com.darkbyte.groupit.tflite.Recognition
 import com.darkbyte.groupit.tflite.SimilarityClassifier
 import com.darkbyte.groupit.tflite.TFLiteObjectDetectionAPIModel
+import com.darkbyte.groupit.tflite.UserFace
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
@@ -32,7 +33,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.io.IOException
-import java.util.LinkedList
 
 
 object Utils {
@@ -114,7 +114,6 @@ object Utils {
             DetectorMode.TF_OD_API -> minimumConfidence =
                 MINIMUM_CONFIDENCE_TF_OD_API
         }
-        val mappedRecognitions: MutableList<Recognition> = LinkedList()
         val mutableBitmap = bitmap?.copy(Bitmap.Config.ARGB_8888, true)
 
 
@@ -124,71 +123,60 @@ object Utils {
             val boundingBox = RectF(face.boundingBox)
 
             //final boolean goodConfidence = result.getConfidence() >= minimumConfidence;
-            val goodConfidence = true //face.get;
-            if (goodConfidence) {
-
-
-                //canvas.drawRect(faceBB, paint);
-                var label = ""
-                var confidence = -1f
-                var color = Color.BLUE
-                var extra: Any? = null
-                var croppedBitmap: Bitmap? = null
-                val startTime = SystemClock.uptimeMillis()
-                val bounds = face.boundingBox
-
-                val croppedFaceBitmap = Bitmap.createBitmap(
-                    mutableBitmap!!,
-                    bounds.left,
-                    bounds.top,
-                    if (bounds.left + bounds.width() <= bounds.width()) {
-                        bounds.width()
-                    } else {
-                        mutableBitmap.width - bounds.left
-                    },
-                    minOf(bounds.height(), mutableBitmap.height)
-                )
-                val result = detector!!.recognizeImage(croppedFaceBitmap, true)
-                lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime
-                if (result != null) {
-                    extra = result.extra
-                    croppedBitmap = bitmap
-                    //          Object extra = result.getExtra();
-//          if (extra != null) {
-//            Logger.i("embeeding retrieved " + extra.toString());
-//          }
-                    val conf: Float = result.distance ?: 0f
-                    if (conf < 1.0f) {
-                        label = result.title ?: "photo$counter"
-                        if (detector?.registeredList(result.title.orEmpty()) != null) {
-                            Logger.d("i'm working name - ${result.title}")
-                            croppedBitmap = null
-                        } else {
-                            counter + 1
-                        }
-                        confidence = conf
-                        color = if (detector?.registeredList(result.title.orEmpty()) != null) {
-                            Color.GREEN
-                        } else {
-                            Color.RED
-                        }
-                    }
+//            val goodConfidence = true //face.get;
+            var label = "photo$counter"
+            var confidence = -1f
+            var color = Color.BLUE
+            var extra: Any? = null
+            var croppedBitmap: Bitmap? = null
+            val startTime = SystemClock.uptimeMillis()
+            val bounds = face.boundingBox
+            val croppedFaceBitmap = Bitmap.createBitmap(
+                mutableBitmap!!,
+                bounds.left,
+                minOf(bounds.top, 0),
+                if (bounds.left + bounds.width() <= bounds.width()) {
+                    bounds.width()
+                } else {
+                    mutableBitmap.width - bounds.left
+                },
+                if (bounds.top + bounds.height() <= bounds.height()) {
+                    bounds.height()
+                } else {
+                    mutableBitmap.height - minOf(bounds.top, 0)
                 }
-                drawRectOnBitmap(mutableBitmap, bounds, color)
-                onFaceCropped(mutableBitmap, bounds)
-
-                val recognition = Recognition(
-                    id = "$counter",
-                    title = label,
-                    distance = confidence,
-                    location = boundingBox,
-                    extra = extra,
-                    bitmap = croppedBitmap
-                )
-                mappedRecognitions.add(recognition)
+            )
+            val result = detector!!.recognizeImage(croppedFaceBitmap)
+            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime
+            if (result != null) {
+                extra = result.extra
+                croppedBitmap = bitmap
+                val conf: Float = result.distance ?: 0f
+                confidence = conf
+                if (conf < 1.0f) {
+                    label = result.title ?: "photo$counter"
+                    color = Color.GREEN
+                } else {
+                    counter++
+                    label = "photo$counter"
+                }
             }
+            drawRectOnBitmap(mutableBitmap, bounds, color)
+            onFaceCropped(mutableBitmap, bounds)
+
+            val userFace = UserFace(
+                id = "$counter",
+                title = label,
+                distance = confidence,
+                location = boundingBox,
+                extra = extra,
+                bitmap = croppedBitmap,
+                facesFoundAlong = faces.size
+            )
+            detector?.register(userFace.title ?: "unknown", userFace)
         }
-        updateResults(mappedRecognitions)
+
+
     }
 
 
@@ -251,23 +239,6 @@ object Utils {
 // checkpoints.
     private enum class DetectorMode {
         TF_OD_API
-    }
-
-    private fun showAddFaceDialog(rec: Recognition) {
-        detector?.register(rec.title ?: "unknown", rec)
-    }
-
-    private fun updateResults(
-        mappedRecognitions: List<Recognition>
-    ) {
-        if (mappedRecognitions.isNotEmpty()) {
-            Logger.i("Adding results")
-            val rec: Recognition = mappedRecognitions[0]
-            if (rec.extra != null) {
-                showAddFaceDialog(rec)
-            }
-        }
-
     }
 
 

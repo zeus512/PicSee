@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
@@ -99,7 +100,7 @@ class MainActivity : ComponentActivity() {
                                     launcher.launch(PickVisualMediaRequest(mediaType = ActivityResultContracts.PickVisualMedia.ImageOnly))
                                 }
                             ) {
-                                Text("Select Photo")
+                                Text(stringResource(R.string.select_photo))
                             }
                             Button(
                                 modifier = Modifier.padding(24.dp),
@@ -108,7 +109,7 @@ class MainActivity : ComponentActivity() {
 
                                 }
                             ) {
-                                Text("Select Photo")
+                                Text(stringResource(R.string.browse))
                             }
                         }
                     }

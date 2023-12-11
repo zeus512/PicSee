@@ -5,22 +5,27 @@ import android.graphics.RectF
 
 interface SimilarityClassifier {
 
-    fun register(name: String, recognition: Recognition)
+    fun register(name: String, face: UserFace)
     fun recognizeImage(
         bitmap: Bitmap?,
-        getExtra: Boolean,
-    ): Recognition?
+    ): UserFace?
 
     fun close()
-    fun registeredList(name: String): Recognition?
-    fun fetchRegisteredList(): List<Recognition>
+    fun registeredList(name: String): UserFace?
+    fun fetchRegisteredList(): List<UserFace>
+    fun fetchAllPhotosFromSingleFace(name: String): List<UserFace>?
 }
 
-data class Recognition(
+data class Faces(
+    val list: List<UserFace> = listOf()
+)
+
+data class UserFace(
     val id: String?,
     val title: String?,
     val distance: Float?,
     val location: RectF?,
     var extra: Any? = null,
-    val bitmap: Bitmap? = null
+    val bitmap: Bitmap? = null,
+    val facesFoundAlong: Int = Int.MAX_VALUE
 )
