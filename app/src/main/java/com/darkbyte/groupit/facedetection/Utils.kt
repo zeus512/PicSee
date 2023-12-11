@@ -153,7 +153,7 @@ object Utils {
                 croppedBitmap = bitmap
                 val conf: Float = result.distance ?: 0f
                 confidence = conf
-                if (conf < 1.0f) {
+                if (conf < 0.7f) {
                     label = result.title ?: "photo$counter"
                     color = Color.GREEN
                 } else {
