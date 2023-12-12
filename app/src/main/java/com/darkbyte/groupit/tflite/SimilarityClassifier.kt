@@ -2,6 +2,8 @@ package com.darkbyte.groupit.tflite;
 
 import android.graphics.Bitmap
 import android.graphics.RectF
+import android.net.Uri
+import java.net.URI
 
 interface SimilarityClassifier {
 
@@ -27,5 +29,6 @@ data class UserFace(
     val location: RectF?,
     var extra: Any? = null,
     val bitmap: Bitmap? = null,
+    val originalUri: Uri? = null,
     val facesFoundAlong: Int = Int.MAX_VALUE
 )

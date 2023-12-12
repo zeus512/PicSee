@@ -11,7 +11,6 @@ import android.graphics.ImageDecoder
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
-import android.media.MediaCodec.MetricsConstants.MODE
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
@@ -40,6 +39,7 @@ object Utils {
     private var detector: SimilarityClassifier? = null
     private var lastProcessingTimeMs: Long = 0
     private var bitmap: Bitmap? = null
+    private var originalPhotoUri: Uri? = null
 
     private var counter = 0
 
@@ -62,7 +62,6 @@ object Utils {
                 TF_OD_API_IS_QUANTIZED
             )
         } catch (e: IOException) {
-            e.printStackTrace()
             Logger.e("Exception initializing classifier!")
             val toast = Toast.makeText(
                 context, "Classifier could not be initialized", Toast.LENGTH_SHORT
@@ -76,6 +75,7 @@ object Utils {
         uri: Uri,
         onFaceCropped: (Bitmap, Rect) -> Unit
     ) {
+        originalPhotoUri = uri
         buildBitmapFromUri(uri, context)
         fetchImageFromMediaUri(context, uri, onFaceCropped)
     }
@@ -119,11 +119,7 @@ object Utils {
 
         for (face in faces) {
             Logger.i("FACE$face")
-            //results = detector.recognizeImage(croppedBitmap);
             val boundingBox = RectF(face.boundingBox)
-
-            //final boolean goodConfidence = result.getConfidence() >= minimumConfidence;
-//            val goodConfidence = true //face.get;
             var label = "photo$counter"
             var confidence = -1f
             var color = Color.BLUE
@@ -171,12 +167,18 @@ object Utils {
                 location = boundingBox,
                 extra = extra,
                 bitmap = croppedBitmap,
-                facesFoundAlong = faces.size
+                facesFoundAlong = faces.size,
+                originalUri = originalPhotoUri
             )
             detector?.register(userFace.title ?: "unknown", userFace)
         }
 
+        resetImageData()
+    }
 
+    private fun resetImageData() {
+        bitmap = null
+        originalPhotoUri = null
     }
 
 
@@ -208,10 +210,8 @@ object Utils {
         onFaceCropped: (Bitmap, Rect) -> Unit
     ) {
         var image: InputImage? = null
-        try {
+        runCatching {
             image = InputImage.fromFilePath(context, uri)
-        } catch (e: IOException) {
-            e.printStackTrace()
         }
         image?.let {
             processImage(it) { faces ->
@@ -229,8 +229,7 @@ object Utils {
                 onSuccess(faces)
             }
             .addOnFailureListener { e ->
-                // Task failed with an exception
-                // ...
+                // Todo
             }
     }
 
@@ -242,12 +241,7 @@ object Utils {
     }
 
 
-    // FaceNet
-//  private static final int TF_OD_API_INPUT_SIZE = 160;
-//  private static final boolean TF_OD_API_IS_QUANTIZED = false;
-//  private static final String TF_OD_API_MODEL_FILE = "facenet.tflite";
-//  //private static final String TF_OD_API_MODEL_FILE = "facenet_hiroki.tflite";
-// MobileFaceNet
+    // MobileFaceNet
     private const val TF_OD_API_INPUT_SIZE = 112
     private const val TF_OD_API_IS_QUANTIZED = false
     private const val TF_OD_API_MODEL_FILE = "mobile_face_net.tflite"
@@ -256,12 +250,8 @@ object Utils {
 
     // Minimum detection confidence to track a detection.
     private const val MINIMUM_CONFIDENCE_TF_OD_API = 0.5f
-    private const val MAINTAIN_ASPECT = false
 
-    //private static final int CROP_SIZE = 320;
-//private static final Size CROP_SIZE = new Size(320, 320);
-    private const val SAVE_PREVIEW_BITMAP = false
-    private const val TEXT_SIZE_DIP = 10f
+
 }
 
 
