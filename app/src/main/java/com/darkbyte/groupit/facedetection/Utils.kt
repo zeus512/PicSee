@@ -16,10 +16,10 @@ import android.os.Build
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.widget.Toast
-import com.darkbyte.groupit.Logger
+import com.darkbyte.groupit.logger.Logger
 import com.darkbyte.groupit.tflite.SimilarityClassifier
-import com.darkbyte.groupit.tflite.SimilarityClassifier.Recognition
 import com.darkbyte.groupit.tflite.TFLiteObjectDetectionAPIModel
+import com.darkbyte.groupit.tflite.UserFace
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
@@ -32,7 +32,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.io.IOException
-import java.util.LinkedList
 
 
 object Utils {
@@ -40,6 +39,7 @@ object Utils {
     private var detector: SimilarityClassifier? = null
     private var lastProcessingTimeMs: Long = 0
     private var bitmap: Bitmap? = null
+    private var originalPhotoUri: Uri? = null
 
     private var counter = 0
 
@@ -62,8 +62,7 @@ object Utils {
                 TF_OD_API_IS_QUANTIZED
             )
         } catch (e: IOException) {
-            e.printStackTrace()
-            Logger().e(e, "Exception initializing classifier!")
+            Logger.e("Exception initializing classifier!")
             val toast = Toast.makeText(
                 context, "Classifier could not be initialized", Toast.LENGTH_SHORT
             )
@@ -76,9 +75,12 @@ object Utils {
         uri: Uri,
         onFaceCropped: (Bitmap, Rect) -> Unit
     ) {
+        originalPhotoUri = uri
         buildBitmapFromUri(uri, context)
         fetchImageFromMediaUri(context, uri, onFaceCropped)
     }
+
+    fun fetchDetector() = detector
 
     private fun drawRectOnBitmap(bitmap: Bitmap, rect: Rect, drawColor: Int) {
         val canvas = Canvas(bitmap)
@@ -100,7 +102,6 @@ object Utils {
 
     private fun onFacesDetected(
         faces: List<Face>,
-        add: Boolean,
         onFaceCropped: (Bitmap, Rect) -> Unit
     ) {
         val paint = Paint()
@@ -113,74 +114,71 @@ object Utils {
             DetectorMode.TF_OD_API -> minimumConfidence =
                 MINIMUM_CONFIDENCE_TF_OD_API
         }
-        val mappedRecognitions: MutableList<Recognition> = LinkedList()
+        val mutableBitmap = bitmap?.copy(Bitmap.Config.ARGB_8888, true)
 
 
         for (face in faces) {
-            Logger().i("FACE$face")
-            //results = detector.recognizeImage(croppedBitmap);
+            Logger.i("FACE$face")
             val boundingBox = RectF(face.boundingBox)
-
-            //final boolean goodConfidence = result.getConfidence() >= minimumConfidence;
-            val goodConfidence = true //face.get;
-            if (goodConfidence) {
-
-
-                //canvas.drawRect(faceBB, paint);
-                var label = ""
-                var confidence = -1f
-                var color = Color.BLUE
-                var extra: Any? = null
-                val startTime = SystemClock.uptimeMillis()
-                val bounds = face.boundingBox
-                val mutableBitmap = bitmap?.copy(Bitmap.Config.ARGB_8888, true)
-
-                val croppedFaceBitmap = Bitmap.createBitmap(
-                    mutableBitmap!!,
-                    bounds.left,
-                    bounds.top,
-                    bounds.width(),
+            var label = "photo$counter"
+            var confidence = -1f
+            var color = Color.BLUE
+            var extra: Any? = null
+            var croppedBitmap: Bitmap? = null
+            val startTime = SystemClock.uptimeMillis()
+            val bounds = face.boundingBox
+            val croppedFaceBitmap = Bitmap.createBitmap(
+                mutableBitmap!!,
+                bounds.left,
+                minOf(bounds.top, 0),
+                if (bounds.left + bounds.width() <= bounds.width()) {
+                    bounds.width()
+                } else {
+                    mutableBitmap.width - bounds.left
+                },
+                if (bounds.top + bounds.height() <= bounds.height()) {
                     bounds.height()
-                )
-                val resultsAux = detector!!.recognizeImage(croppedFaceBitmap, add)
-                lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime
-                if (resultsAux!!.isNotEmpty()) {
-                    val result = resultsAux[0]
-                    extra = result.extra
-                    //          Object extra = result.getExtra();
-//          if (extra != null) {
-//            Logger().i("embeeding retrieved " + extra.toString());
-//          }
-                    val conf: Float = result.distance ?: 0f
-                    if (conf < 1.0f) {
-                        label = result.title ?: "photo$counter"
-                        if (detector?.registeredList(result.title.orEmpty()) != null) {
-                            Logger().d("i'm working name - ${result.title}")
-                        } else {
-                            counter + 1
-                        }
-                        confidence = conf
-                        color = if (detector?.registeredList(result.title.orEmpty()) != null) {
-                            Color.GREEN
-                        } else {
-                            Color.RED
-                        }
-                    }
+                } else {
+                    mutableBitmap.height - minOf(bounds.top, 0)
                 }
-                drawRectOnBitmap(mutableBitmap, bounds, color)
-                onFaceCropped(mutableBitmap, bounds)
-
-                val result = Recognition(
-                    "0", label, confidence, boundingBox
-                )
-                //result.setColor(color)
-                result.setLocation(boundingBox)
-                result.extra = extra
-                //result.setCrop(crop)
-                mappedRecognitions.add(result)
+            )
+            val result = detector!!.recognizeImage(croppedFaceBitmap)
+            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime
+            if (result != null) {
+                extra = result.extra
+                croppedBitmap = bitmap
+                val conf: Float = result.distance ?: 0f
+                confidence = conf
+                if (conf < 0.7f) {
+                    label = result.title ?: "photo$counter"
+                    color = Color.GREEN
+                } else {
+                    counter++
+                    label = "photo$counter"
+                }
             }
+            drawRectOnBitmap(mutableBitmap, bounds, color)
+            onFaceCropped(mutableBitmap, bounds)
+
+            val userFace = UserFace(
+                id = "$counter",
+                title = label,
+                distance = confidence,
+                location = boundingBox,
+                extra = extra,
+                bitmap = croppedBitmap,
+                facesFoundAlong = faces.size,
+                originalUri = originalPhotoUri
+            )
+            detector?.register(userFace.title ?: "unknown", userFace)
         }
-        updateResults(mappedRecognitions)
+
+        resetImageData()
+    }
+
+    private fun resetImageData() {
+        bitmap = null
+        originalPhotoUri = null
     }
 
 
@@ -195,16 +193,12 @@ object Utils {
         val previewHeight = options.outHeight
         val previewWidth = options.outWidth
 
-        Logger().i(
-            "Initializing at size %dx%d",
-            previewWidth,
-            previewHeight
-        )
+        Logger.d("Initializing at size $previewHeight x $previewWidth")
         bitmap = if (Build.VERSION.SDK_INT < 28) {
-            MediaStore.Images.Media.getBitmap(contentResolver, uri);
+            MediaStore.Images.Media.getBitmap(contentResolver, uri)
         } else {
-            val source = ImageDecoder.createSource(contentResolver, uri);
-            ImageDecoder.decodeBitmap(source);
+            val source = ImageDecoder.createSource(contentResolver, uri)
+            ImageDecoder.decodeBitmap(source)
         }
 
     }
@@ -216,15 +210,13 @@ object Utils {
         onFaceCropped: (Bitmap, Rect) -> Unit
     ) {
         var image: InputImage? = null
-        try {
+        runCatching {
             image = InputImage.fromFilePath(context, uri)
-        } catch (e: IOException) {
-            e.printStackTrace()
         }
         image?.let {
             processImage(it) { faces ->
                 GlobalScope.launch(Dispatchers.IO) {
-                    onFacesDetected(faces, true, onFaceCropped)
+                    onFacesDetected(faces, onFaceCropped)
                 }
             }
         }
@@ -237,8 +229,7 @@ object Utils {
                 onSuccess(faces)
             }
             .addOnFailureListener { e ->
-                // Task failed with an exception
-                // ...
+                // Todo
             }
     }
 
@@ -249,30 +240,8 @@ object Utils {
         TF_OD_API
     }
 
-    private fun showAddFaceDialog(rec: Recognition) {
-        detector?.register(rec.title ?: "unknown", rec)
-    }
 
-    private fun updateResults(
-        mappedRecognitions: List<Recognition>
-    ) {
-        if (mappedRecognitions.isNotEmpty()) {
-            Logger().i("Adding results")
-            val rec: Recognition = mappedRecognitions[0]
-            if (rec.extra != null) {
-                showAddFaceDialog(rec)
-            }
-        }
-
-    }
-
-
-    // FaceNet
-//  private static final int TF_OD_API_INPUT_SIZE = 160;
-//  private static final boolean TF_OD_API_IS_QUANTIZED = false;
-//  private static final String TF_OD_API_MODEL_FILE = "facenet.tflite";
-//  //private static final String TF_OD_API_MODEL_FILE = "facenet_hiroki.tflite";
-// MobileFaceNet
+    // MobileFaceNet
     private const val TF_OD_API_INPUT_SIZE = 112
     private const val TF_OD_API_IS_QUANTIZED = false
     private const val TF_OD_API_MODEL_FILE = "mobile_face_net.tflite"
@@ -281,12 +250,8 @@ object Utils {
 
     // Minimum detection confidence to track a detection.
     private const val MINIMUM_CONFIDENCE_TF_OD_API = 0.5f
-    private const val MAINTAIN_ASPECT = false
 
-    //private static final int CROP_SIZE = 320;
-//private static final Size CROP_SIZE = new Size(320, 320);
-    private const val SAVE_PREVIEW_BITMAP = false
-    private const val TEXT_SIZE_DIP = 10f
+
 }
 
 

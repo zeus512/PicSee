@@ -6,7 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.RectF
 import android.os.Trace
 import android.util.Pair
-import com.darkbyte.groupit.Logger
+import com.darkbyte.groupit.logger.Logger
 import org.tensorflow.lite.Interpreter
 import java.io.BufferedReader
 import java.io.FileInputStream
@@ -20,7 +20,7 @@ import java.nio.channels.FileChannel
 import java.util.Vector
 import kotlin.math.sqrt
 
-//private static final int OUTPUT_SIZE = 512;
+
 private const val OUTPUT_SIZE = 192
 
 // Only return this many results.
@@ -43,7 +43,6 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
 
     // Pre-allocated buffers.
     private val labels = Vector<String>()
-    private lateinit var intValues: IntArray
 
     // outputLocations: array of shape [Batchsize, NUM_DETECTIONS,4]
     // contains the location of detected boxes
@@ -60,29 +59,27 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
     // numDetections: array of shape [Batchsize]
     // contains the number of detected boxes
     private var numDetections: FloatArray = floatArrayOf()
-    private var embeedings: Array<FloatArray> = arrayOf(floatArrayOf())
     private lateinit var imgData: ByteBuffer
     private var tfLite: Interpreter? = null
 
-    // Face Mask Detector Output
+    // UserFace Mask Detector Output
     private val output: MutableList<MutableList<Float>> = mutableListOf()
 
-    private var registered: HashMap<String, SimilarityClassifier.Recognition> = HashMap()
-    override fun register(name: String, recognition: SimilarityClassifier.Recognition) {
-        registered.getOrPut(name) { recognition }
+    private var registered: HashMap<String, Faces> = HashMap()
+    override fun register(name: String, face: UserFace) {
+        val list: MutableList<UserFace> = mutableListOf()
+        list.addAll(registered[name]?.list.orEmpty())
+        list.add(face)
+        registered[name] = Faces(list)
     }
 
     override fun recognizeImage(
         bitmap: Bitmap?,
-        getExtra: Boolean
-    ): List<SimilarityClassifier.Recognition>? {
-        // Log this method so that it can be analyzed with systrace.
-        Trace.beginSection("recognizeImage")
-        Trace.beginSection("preprocessBitmap")
-        // Preprocess the image data from 0-255 int to normalized float based
-        // on the provided parameters.
+    ): UserFace? {
+
         if (bitmap == null) return null
-        val pixels = IntArray(bitmap.width * bitmap.height)
+        val size = maxOf(bitmap.width * bitmap.height, inputSize * inputSize)
+        val pixels = IntArray(size)
         imgData.rewind()
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
 
@@ -90,7 +87,6 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
         for (i in 0..<inputSize) {
             for (j in 0..<inputSize) {
                 val pixelValue = pixels[i * inputSize + j]
-                Logger().d("dummy $pixelValue")
                 if (isModelQuantized) {
                     // Quantized model
                     imgData.put((pixelValue shr 16 and 0xFF).toByte())
@@ -103,83 +99,71 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
                 }
             }
         }
-        Trace.endSection() // preprocessBitmap
-
-        // Copy the input data into TensorFlow.
-        Trace.beginSection("feed")
         val inputArray = arrayOf<Any?>(imgData)
-        Trace.endSection()
 
-// Here outputMap is changed to fit the Face Mask detector
+        // Here outputMap is changed to fit the UserFace Mask detector
         val outputMap: MutableMap<Int, Any> = HashMap()
         embeddings = Array(1) { FloatArray(OUTPUT_SIZE) }
         outputMap[0] = embeddings
 
 
         // Run the inference call.
-        Trace.beginSection("run")
-        //tfLite.runForMultipleInputsOutputs(inputArray, outputMapBack);
         tfLite?.runForMultipleInputsOutputs(inputArray, outputMap)
-        Trace.endSection()
 
-//    String res = "[";
-//    for (int i = 0; i < embeedings[0].length; i++) {
-//      res += embeedings[0][i];
-//      if (i < embeedings[0].length - 1) res += ", ";
-//    }
-//    res += "]";
         var distance = Float.MAX_VALUE
         val id = "0"
         var label: String? = "?"
         if (registered.size > 0) {
-            //LOGGER.i("dataset SIZE: " + registered.size());
             val nearest = findNearest(embeddings[0])
             if (nearest != null) {
                 val name = nearest.first
                 label = name
                 distance = nearest.second
-                Logger().i("nearest: $name - distance: $distance")
+                Logger.i("nearest: $name - distance: $distance")
             }
         }
-        val recognitions: MutableList<SimilarityClassifier.Recognition> = mutableListOf()
-        val rec = SimilarityClassifier.Recognition(
+        val rec = UserFace(
             id,
             label,
             distance,
-            RectF()
+            RectF(),
+            embeddings,
         )
-        recognitions.add(rec)
-        if (getExtra) {
-            rec.extra = embeddings
-        }
         Trace.endSection()
-        return recognitions
+        return rec
     }
 
-
-    override fun enableStatLogging(debug: Boolean) {
-        TODO("Not yet implemented")
-    }
-
-    override val statString: String?
-        get() = TODO("Not yet implemented")
 
     override fun close() {
         TODO("Not yet implemented")
     }
 
-    override fun setUseNNAPI(isChecked: Boolean) {
-        TODO("Not yet implemented")
+    override fun registeredList(name: String) =
+        registered[name]?.list?.firstOrNull { it.facesFoundAlong == 1 }
+            ?: registered[name]?.list?.firstOrNull()
+
+    override fun fetchAllPhotosFromSingleFace(name: String) =
+        registered[name]?.list
+
+
+    override fun fetchRegisteredList(): List<UserFace> {
+        val list: MutableList<UserFace> = mutableListOf()
+        registered.values.forEach {
+            val userFace = it.list.firstOrNull { it.facesFoundAlong == 1 } ?: it.list.firstOrNull()
+            userFace?.let { face ->
+                list.add(face)
+            }
+        }
+        return list
     }
 
-    override fun registeredList(name: String) = registered[name]
-// looks for the nearest embeeding in the dataset (using L2 norm)
+    // looks for the nearest embeeding in the dataset (using L2 norm)
     // and retrurns the pair <id, distance>
-
     private fun findNearest(emb: FloatArray): Pair<String, Float>? {
         var ret: Pair<String, Float>? = null
-        for ((name, value) in registered) {
-            val knownEmb = (value.extra as? Array<FloatArray>)?.getOrNull(0) ?: floatArrayOf()
+        for ((name, faces) in registered) {
+            val face = faces.list.firstOrNull() ?: return null
+            val knownEmb = (face.extra as? Array<FloatArray>)?.getOrNull(0) ?: floatArrayOf()
             var distance = 0f
             for (i in emb.indices) {
                 if (i !in knownEmb.indices) continue
@@ -223,7 +207,7 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
         inputSize: Int,
         isQuantized: Boolean
     ): SimilarityClassifier {
-        val d = TFLiteObjectDetectionAPIModel()
+        val tflModel = TFLiteObjectDetectionAPIModel()
         val actualFilename = labelFilename.split("file:///android_asset/".toRegex())
             .dropLastWhile { it.isEmpty() }
             .toTypedArray()[1]
@@ -231,13 +215,13 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
         val br = BufferedReader(InputStreamReader(labelsInput))
         var line: String?
         while (br.readLine().also { line = it } != null) {
-            Logger().w(line)
-            d.labels.add(line)
+            Logger.w(line)
+            tflModel.labels.add(line)
         }
         br.close()
-        d.inputSize = inputSize
+        tflModel.inputSize = inputSize
         try {
-            d.tfLite = Interpreter(
+            tflModel.tfLite = Interpreter(
                 loadModelFile(assetManager, modelFilename), Interpreter.Options()
                     .setNumThreads(NUM_THREADS)
             )
@@ -245,23 +229,22 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
         } catch (e: Exception) {
             throw RuntimeException(e)
         }
-        d.isModelQuantized = isQuantized
+        tflModel.isModelQuantized = isQuantized
         // Pre-allocate buffers.
         val numBytesPerChannel: Int = if (isQuantized) {
             1 // Quantized
         } else {
             4 // Floating point
         }
-        d.imgData =
-            ByteBuffer.allocateDirect(1 * d.inputSize * d.inputSize * 3 * numBytesPerChannel)
-        d.imgData.order(ByteOrder.nativeOrder())
-        d.intValues = IntArray(d.inputSize * d.inputSize)
+        tflModel.imgData =
+            ByteBuffer.allocateDirect(1 * tflModel.inputSize * tflModel.inputSize * 3 * numBytesPerChannel)
+        tflModel.imgData.order(ByteOrder.nativeOrder())
 
-        d.outputLocations =
-            Array<Array<FloatArray>>(1) { Array<FloatArray>(NUM_DETECTIONS) { FloatArray(4) } }
-        d.outputClasses = Array<FloatArray>(1) { FloatArray(NUM_DETECTIONS) }
-        d.outputScores = Array<FloatArray>(1) { FloatArray(NUM_DETECTIONS) }
-        d.numDetections = FloatArray(1)
-        return d
+        tflModel.outputLocations =
+            Array(1) { Array<FloatArray>(NUM_DETECTIONS) { FloatArray(4) } }
+        tflModel.outputClasses = Array<FloatArray>(1) { FloatArray(NUM_DETECTIONS) }
+        tflModel.outputScores = Array<FloatArray>(1) { FloatArray(NUM_DETECTIONS) }
+        tflModel.numDetections = FloatArray(1)
+        return tflModel
     }
 }

@@ -1,5 +1,6 @@
 package com.darkbyte.groupit
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.net.Uri
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
@@ -91,13 +93,24 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     Box(contentAlignment = Alignment.BottomCenter) {
-                        Button(
-                            modifier = Modifier.padding(24.dp),
-                            onClick = {
-                                launcher.launch(PickVisualMediaRequest(mediaType = ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        Column {
+                            Button(
+                                modifier = Modifier.padding(24.dp),
+                                onClick = {
+                                    launcher.launch(PickVisualMediaRequest(mediaType = ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                }
+                            ) {
+                                Text(stringResource(R.string.select_photo))
                             }
-                        ) {
-                            Text("Select Photo")
+                            Button(
+                                modifier = Modifier.padding(24.dp),
+                                onClick = {
+                                    startActivity(Intent(this@MainActivity, UsersUI::class.java))
+
+                                }
+                            ) {
+                                Text(stringResource(R.string.browse))
+                            }
                         }
                     }
                 }
