@@ -54,7 +54,8 @@ object Utils {
 
     fun initiateTFLite(context: Context, assetManager: AssetManager) {
         try {
-            detector = TFLiteObjectDetectionAPIModel().create(
+            detector = TFLiteObjectDetectionAPIModel( context ).create(
+                context ,
                 assetManager,
                 TF_OD_API_MODEL_FILE,
                 TF_OD_API_LABELS_FILE,
@@ -130,16 +131,16 @@ object Utils {
             val croppedFaceBitmap = Bitmap.createBitmap(
                 mutableBitmap!!,
                 bounds.left,
-                minOf(bounds.top, 0),
-                if (bounds.left + bounds.width() <= bounds.width()) {
+                maxOf(bounds.top, 0),
+                if (bounds.left + bounds.width() <= mutableBitmap.width) {
                     bounds.width()
                 } else {
                     mutableBitmap.width - bounds.left
                 },
-                if (bounds.top + bounds.height() <= bounds.height()) {
+                if (bounds.top + bounds.height() <= mutableBitmap.height) {
                     bounds.height()
                 } else {
-                    mutableBitmap.height - minOf(bounds.top, 0)
+                    mutableBitmap.height - maxOf(bounds.top, 0)
                 }
             )
             val result = detector!!.recognizeImage(croppedFaceBitmap)

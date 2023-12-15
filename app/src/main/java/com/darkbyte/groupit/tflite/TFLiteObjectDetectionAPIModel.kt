@@ -1,5 +1,6 @@
 package com.darkbyte.groupit.tflite
 
+import android.content.Context
 import android.content.res.AssetFileDescriptor
 import android.content.res.AssetManager
 import android.graphics.Bitmap
@@ -9,7 +10,9 @@ import android.util.Pair
 import com.darkbyte.groupit.logger.Logger
 import org.tensorflow.lite.Interpreter
 import java.io.BufferedReader
+import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
@@ -33,7 +36,7 @@ private const val IMAGE_STD = 128.0f
 // Number of threads in the java app
 private const val NUM_THREADS = 4
 
-class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
+class TFLiteObjectDetectionAPIModel( private val context: Context ) : SimilarityClassifier {
 
     var embeddings: Array<FloatArray> = arrayOf(floatArrayOf())
     private var isModelQuantized = false
@@ -78,6 +81,8 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
     ): UserFace? {
 
         if (bitmap == null) return null
+
+        saveBitmap( context , bitmap , "sample" )
         val size = maxOf(bitmap.width * bitmap.height, inputSize * inputSize)
         val pixels = IntArray(size)
         imgData.rewind()
@@ -178,6 +183,11 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
         return ret
     }
 
+    private fun saveBitmap(context: Context, image: Bitmap, name: String) {
+        val fileOutputStream = FileOutputStream(File( context.filesDir.absolutePath + "/$name.png"))
+        image.compress(Bitmap.CompressFormat.PNG, 100, fileOutputStream)
+    }
+
 
     /** Memory-map the model file in Assets.  */
     @Throws(IOException::class)
@@ -201,13 +211,14 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
      */
     @Throws(IOException::class)
     fun create(
+        context: Context ,
         assetManager: AssetManager,
         modelFilename: String,
         labelFilename: String,
         inputSize: Int,
         isQuantized: Boolean
     ): SimilarityClassifier {
-        val tflModel = TFLiteObjectDetectionAPIModel()
+        val tflModel = TFLiteObjectDetectionAPIModel( context )
         val actualFilename = labelFilename.split("file:///android_asset/".toRegex())
             .dropLastWhile { it.isEmpty() }
             .toTypedArray()[1]
