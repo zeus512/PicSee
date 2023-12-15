@@ -7,7 +7,13 @@ import android.graphics.RectF
 import android.os.Trace
 import android.util.Pair
 import com.darkbyte.groupit.logger.Logger
+import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.support.common.ops.CastOp
+import org.tensorflow.lite.support.common.ops.NormalizeOp
+import org.tensorflow.lite.support.image.ImageProcessor
+import org.tensorflow.lite.support.image.TensorImage
+import org.tensorflow.lite.support.image.ops.ResizeOp
 import java.io.BufferedReader
 import java.io.FileInputStream
 import java.io.IOException
@@ -73,11 +79,20 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
         registered[name] = Faces(list)
     }
 
+    // 112 -> value of TF_OD_API_INPUT_SIZE fom Utils.kt
+    private val imageProcessor = ImageProcessor.Builder()
+        .add( ResizeOp( 112 , 112 , ResizeOp.ResizeMethod.BILINEAR ) )
+        .add( CastOp( DataType.FLOAT32 ) )
+        .add( NormalizeOp( IMAGE_MEAN , IMAGE_STD ) )
+        .build()
+
     override fun recognizeImage(
         bitmap: Bitmap?,
     ): UserFace? {
 
         if (bitmap == null) return null
+
+        /*
         val size = maxOf(bitmap.width * bitmap.height, inputSize * inputSize)
         val pixels = IntArray(size)
         imgData.rewind()
@@ -99,6 +114,9 @@ class TFLiteObjectDetectionAPIModel : SimilarityClassifier {
                 }
             }
         }
+         */
+
+        imgData = imageProcessor.process( TensorImage.fromBitmap( bitmap ) ).buffer
         val inputArray = arrayOf<Any?>(imgData)
 
         // Here outputMap is changed to fit the UserFace Mask detector
