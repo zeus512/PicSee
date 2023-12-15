@@ -50,7 +50,6 @@ android {
 }
 
 dependencies {
-
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -58,6 +57,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.mlkit.facedetection)
     implementation(libs.tensorflow.lite)
+    implementation(libs.tensorflow.lite.support)
     implementation(libs.androidx.exifinterface)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
